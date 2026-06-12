@@ -45,6 +45,10 @@ class YouTube:
         self.video_api_url = config.VIDEO_API_URL
         self.artistbots_key = config.ARTISTBOTS_KEY
         self.nexgen_key = config.API_KEY
+        self.uses_nexgen_api = (
+            "nexgenbots.xyz" in (self.api_url or "")
+            or "nexgenbots.xyz" in (self.video_api_url or "")
+        )
         self.enable_api = config.ENABLE_API
         self.enable_cookies_fallback = config.ENABLE_COOKIES_FALLBACK
         self.api_timeout = config.API_TIMEOUT
@@ -492,10 +496,9 @@ class YouTube:
                     "postprocessors": [],
                 }
 
-            ydl_opts_cookie = {
-                **ydl_opts,
-                "cookiefile": cookie,
-            }
+            ydl_runtime_opts = {**ydl_opts}
+            if cookie:
+                ydl_runtime_opts["cookiefile"] = cookie
 
             def _download(ydl_runtime_opts):
                 ydl_instance = None
@@ -528,8 +531,9 @@ class YouTube:
                         except Exception:
                             pass
 
-            logger.info(f"🍪 [COOKIES FALLBACK] Downloading {video_id} with cookies...")
-            result = await asyncio.to_thread(_download, ydl_opts_cookie)
+            fallback_label = "with cookies" if cookie else "without cookies"
+            logger.info(f"🍪 [YT-DLP FALLBACK] Downloading {video_id} {fallback_label}...")
+            result = await asyncio.to_thread(_download, ydl_runtime_opts)
             
             if result:
                 logger.info(f"✅ [COOKIES SUCCESS] Downloaded: {result}")
@@ -733,7 +737,7 @@ class YouTube:
         if self.enable_api and self.api_url and self.artistbots_key:
             logger.info(f"🎯 [PRIORITY 1] Trying API download for {video_id}")
             result = await self.download_via_nexgen(video_id, video=video)
-            if not result:
+            if not result and not self.uses_nexgen_api:
                 result = await self.download_via_api(self.base + video_id, video=video)
             
             if result:
